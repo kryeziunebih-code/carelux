@@ -1,14 +1,13 @@
 import { prisma } from "../../../lib/prisma";
 import Link from "next/link";
-import { revalidatePath } from "next/cache";
 import { cancelBooking, reinstateBooking } from "./actions";
-export const revalidate = 0; // optional
-export default async function AdminBookings(/* props */) { /* ... */ }
+
+export const revalidate = 0;
 
 type Search = { status?: string; page?: string };
 
 function StatusBadge({ status }: { status: string }) {
-  const s = status.toUpperCase();
+  const s = (status || "").toUpperCase();
   const color =
     s === "CONFIRMED" ? "#16a34a" :
     s === "PENDING"   ? "#f59e0b" :
@@ -23,29 +22,12 @@ function StatusBadge({ status }: { status: string }) {
         padding: "2px 8px",
         borderRadius: 999,
         fontSize: 12,
-        whiteSpace: "nowrap"
+        whiteSpace: "nowrap",
       }}
     >
-      {s}
+      {s || "CONFIRMED"}
     </span>
   );
-}
-
-// Server actions for inline Cancel / Reinstate
-export async function cancelBooking(formData: FormData) {
-  "use server";
-  const id = String(formData.get("id") || "");
-  if (!id) return;
-  await prisma.booking.update({ where: { id }, data: { status: "CANCELLED" } });
-  revalidatePath("/admin/bookings");
-}
-
-export async function reinstateBooking(formData: FormData) {
-  "use server";
-  const id = String(formData.get("id") || "");
-  if (!id) return;
-  await prisma.booking.update({ where: { id }, data: { status: "CONFIRMED" } });
-  revalidatePath("/admin/bookings");
 }
 
 export default async function AdminBookings({ searchParams }: { searchParams: Search }) {
@@ -56,7 +38,7 @@ export default async function AdminBookings({ searchParams }: { searchParams: Se
     where,
     orderBy: { createdAt: "desc" },
     include: { slot: { include: { clinic: true, provider: true } } },
-    take: 50, // simple cap; we can add pagination later
+    take: 50,
   });
 
   const filterValue = status;
@@ -67,22 +49,16 @@ export default async function AdminBookings({ searchParams }: { searchParams: Se
         <h1 className="text-2xl font-semibold">Bookings</h1>
 
         <form action="/admin/bookings" method="get" className="flex items-center gap-2">
-  	  <label className="text-sm">Status</label>
-  	  <select
-    	    name="status"
-    	    defaultValue={filterValue}
-    	    className="input"
-    	    style={{ padding: "6px 10px" }}
-  	  >
-    	    <option value="ALL">All</option>
-    	    <option value="PENDING">Pending</option>
-    	    <option value="CONFIRMED">Confirmed</option>
-   	    <option value="COMPLETED">Completed</option>
-   	    <option value="CANCELLED">Cancelled</option>
- 	 </select>
- 	 <button className="btn" style={{ padding: "8px 14px" }}>Apply</button>
-	</form>
-
+          <label className="text-sm">Status</label>
+          <select name="status" defaultValue={filterValue} className="input" style={{ padding: "6px 10px" }}>
+            <option value="ALL">All</option>
+            <option value="PENDING">Pending</option>
+            <option value="CONFIRMED">Confirmed</option>
+            <option value="COMPLETED">Completed</option>
+            <option value="CANCELLED">Cancelled</option>
+          </select>
+          <button className="btn" style={{ padding: "8px 14px" }}>Apply</button>
+        </form>
       </div>
 
       <div className="card overflow-x-auto">
@@ -102,7 +78,7 @@ export default async function AdminBookings({ searchParams }: { searchParams: Se
             {bookings.map((b) => {
               const s = b.slot;
               const when = new Date(s.startsAt);
-              const isCancelled = b.status?.toUpperCase() === "CANCELLED";
+              const isCancelled = (b.status || "").toUpperCase() === "CANCELLED";
               return (
                 <tr key={b.id} className="border-b last:border-0 align-top">
                   <td className="py-2 pr-3">{new Date(b.createdAt).toLocaleString()}</td>
@@ -127,22 +103,12 @@ export default async function AdminBookings({ searchParams }: { searchParams: Se
                       {!isCancelled ? (
                         <form action={cancelBooking}>
                           <input type="hidden" name="id" value={b.id} />
-                          <button
-                            className="underline"
-                            style={{ color: "#dc2626" }}
-                          >
-                            Cancel
-                          </button>
+                          <button className="underline" style={{ color: "#dc2626" }}>Cancel</button>
                         </form>
                       ) : (
                         <form action={reinstateBooking}>
                           <input type="hidden" name="id" value={b.id} />
-                          <button
-                            className="underline"
-                            style={{ color: "#16a34a" }}
-                          >
-                            Reinstate
-                          </button>
+                          <button className="underline" style={{ color: "#16a34a" }}>Reinstate</button>
                         </form>
                       )}
                     </div>
@@ -152,7 +118,9 @@ export default async function AdminBookings({ searchParams }: { searchParams: Se
             })}
             {bookings.length === 0 && (
               <tr>
-                <td className="py-6 text-gray-500" colSpan={7}>No bookings found for this filter.</td>
+                <td className="py-6 text-gray-500" colSpan={7}>
+                  No bookings found for this filter.
+                </td>
               </tr>
             )}
           </tbody>
