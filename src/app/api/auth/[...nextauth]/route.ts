@@ -1,11 +1,9 @@
 import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import { prisma } from "../../../../lib/prisma";
-// @ts-ignore - using ambient/any for bcryptjs in prod build (Railway may omit @types)
-/* eslint-disable @typescript-eslint/ban-ts-comment */
-import bcrypt from "bcryptjs";
-// If you still see a type error, uncomment the line below instead of the import above:
-// const bcrypt = require("bcryptjs") as typeof import("bcryptjs");
+
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const bcrypt: typeof import("bcryptjs") = require("bcryptjs");
 
 const handler = NextAuth({
   providers: [
@@ -18,11 +16,13 @@ const handler = NextAuth({
       async authorize(credentials) {
         if (!credentials?.email || !credentials?.password) return null;
 
-	const user = await prisma.user.findUnique({ where: { email: credentials.email } });
-	if (!user) return null;
-	const ok = await bcrypt.compare(credentials.password, user.passwordHash);
-	if (!ok) return null;
-	return { id: user.id, email: user.email, role: user.role, name: user.name };
+        const user = await prisma.user.findUnique({ where: { email: credentials.email } });
+        if (!user) return null;
+
+        const ok = await bcrypt.compare(credentials.password, user.passwordHash);
+        if (!ok) return null;
+
+        return { id: user.id, email: user.email, role: user.role, name: user.name };
       }
     })
   ],
