@@ -1,6 +1,9 @@
 import { prisma } from "../../../lib/prisma";
 import Link from "next/link";
 import { revalidatePath } from "next/cache";
+import { cancelBooking, reinstateBooking } from "./actions";
+export const revalidate = 0; // optional
+export default async function AdminBookings(/* props */) { /* ... */ }
 
 type Search = { status?: string; page?: string };
 
