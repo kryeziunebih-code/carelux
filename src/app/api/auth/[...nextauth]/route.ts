@@ -1,7 +1,11 @@
 import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import { prisma } from "../../../../lib/prisma";
+// @ts-ignore - using ambient/any for bcryptjs in prod build (Railway may omit @types)
+/* eslint-disable @typescript-eslint/ban-ts-comment */
 import bcrypt from "bcryptjs";
+// If you still see a type error, uncomment the line below instead of the import above:
+// const bcrypt = require("bcryptjs") as typeof import("bcryptjs");
 
 const handler = NextAuth({
   providers: [
