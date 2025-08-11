@@ -1,0 +1,20 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Brand palette */
+:root {
+  --bg: 255 255 255;   /* cream #F4F1EC */
+  --fg: 25 32 42;      /* navy #19202A */
+}
+body { color: rgb(var(--fg)); background: #ffffff; }
+.container { @apply max-w-5xl mx-auto px-4; }
+.card { @apply rounded-2xl shadow p-5 border border-brand-gold/20 bg-white; }
+.badge { @apply inline-flex items-center text-xs px-2 py-1 rounded-full border border-brand-gold text-brand-navy bg-brand-cream; }
+.btn { @apply inline-flex items-center justify-center px-4 py-2 rounded-2xl border border-brand-gold bg-brand-gold text-white hover:opacity-90 transition; }
+.link { @apply text-brand-navy underline decoration-brand-gold/40 underline-offset-4 hover:text-brand-gold; }
+input, textarea { @apply w-full rounded-xl border px-3 py-2 border-brand-gold/40 focus:outline-none focus:ring-2 focus:ring-brand-gold/50 bg-white; }
+label { @apply text-sm text-brand-navy; }
+
+.btn-secondary { @apply inline-flex items-center justify-center px-4 py-2 rounded-2xl border border-brand-gold/40 bg-white text-brand-navy hover:bg-brand-cream transition; }
+.btn-ghost { @apply inline-flex items-center justify-center px-3 py-2 rounded-2xl text-brand-navy hover:bg-brand-cream border border-transparent; }
