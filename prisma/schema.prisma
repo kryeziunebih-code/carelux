@@ -1,3 +1,5 @@
+// prisma/schema.prisma
+
 generator client {
   provider = "prisma-client-js"
 }
@@ -5,44 +7,66 @@ generator client {
 datasource db {
   provider  = "postgresql"
   url       = env("DATABASE_URL")
-  directUrl = env("DATABASE_URL") // <-- ADD THIS LINE
+  directUrl = env("DATABASE_URL")
 }
 
+// UPDATE: Added services relation
 model Clinic {
-  id                 String             @id @default(cuid())
-  name               String
-  city               String
-  providers          Provider[]
-  slots              Slot []
-  clinicSpecialties  ClinicSpecialty[]
+  id                String            @id @default(cuid())
+  name              String
+  city              String
+  providers         Provider[]
+  slots             Slot[]
+  services          Service[] // <-- ADDED THIS LINE
+  clinicSpecialties ClinicSpecialty[]
 
   @@unique([name])
 }
 
 model Provider {
-  id        String  @id @default(cuid())
+  id        String @id @default(cuid())
   name      String
   specialty String
-  clinic    Clinic  @relation(fields: [clinicId], references: [id])
+  clinic    Clinic @relation(fields: [clinicId], references: [id])
   clinicId  String
   slots     Slot[]
 }
 
+// UPDATE: Slots are now linked to a Service
 model Slot {
-  id          String   @id @default(cuid())
-  startsAt    DateTime
+  id     String   @id @default(cuid())
+  startsAt DateTime
+  booked   Boolean  @default(false)
+  
+  clinic   Clinic   @relation(fields: [clinicId], references: [id])
+  clinicId String
+  
+  provider Provider @relation(fields: [providerId], references: [id])
+  providerId String
+
+  // ADDED: Link to a service
+  service   Service @relation(fields: [serviceId], references: [id])
+  serviceId String
+
+  booking Booking?
+}
+
+// NEW: The Service model
+model Service {
+  id          String  @id @default(cuid())
+  name        String
+  description String?
   durationMin Int
-  booked      Boolean  @default(false)
-  clinic      Clinic   @relation(fields: [clinicId], references: [id])
-  clinicId    String
-  provider    Provider @relation(fields: [providerId], references: [id])
-  providerId  String
-  booking     Booking?
+  price       Float?
+
+  clinic   Clinic @relation(fields: [clinicId], references: [id])
+  clinicId String
+  slots    Slot[]
 }
 
 model Specialty {
-  id                String             @id @default(cuid())
-  name              String             @unique
+  id                String            @id @default(cuid())
+  name              String            @unique
   clinicSpecialties ClinicSpecialty[]
 }
 
@@ -50,8 +74,8 @@ model ClinicSpecialty {
   clinicId    String
   specialtyId String
 
-  clinic      Clinic    @relation(fields: [clinicId], references: [id])
-  specialty   Specialty @relation(fields: [specialtyId], references: [id])
+  clinic    Clinic    @relation(fields: [clinicId], references: [id])
+  specialty Specialty @relation(fields: [specialtyId], references: [id])
 
   @@id([clinicId, specialtyId])
 }
@@ -67,7 +91,6 @@ model Booking {
   createdAt    DateTime @default(now())
 }
 
-
 model User {
   id           String   @id @default(cuid())
   email        String   @unique
@@ -76,4 +99,3 @@ model User {
   name         String?
   createdAt    DateTime @default(now())
 }
-
