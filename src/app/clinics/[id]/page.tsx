@@ -7,6 +7,7 @@ import { bookingCustomerHtml, bookingAdminHtml } from "../../../lib/emailTemplat
 import BookingForm from "../../../components/BookingForm";
 import Breadcrumbs from "../../../components/Breadcrumbs";
 import BackButton from "../../../components/BackButton";
+import { createCalendarEvent } from "../../../lib/calendar"; // Make sure this import is at the top
 
 async function bookSlot(formData: FormData) {
   "use server";
@@ -22,33 +23,66 @@ async function bookSlot(formData: FormData) {
       data: { slotId, patientName: name, patientEmail: email, notes: notes || null },
     });
     await prisma.slot.update({ where: { id: slotId }, data: { booked: true } });
-  // Email notifications
-  const slot = await prisma.slot.findUnique({ where: { id: slotId }, include: { clinic: true, provider: true } });
-  const appUrl = process.env.APP_BASE_URL || 'http://localhost:3000';
-  const customerHtml = bookingCustomerHtml({
-    clinicName: slot?.clinic?.name || 'Clinic',
-    clinicCity: slot?.clinic?.city || '',
-    providerName: slot?.provider?.name || 'Provider',
-    startsAtISO: String(slot?.startsAt),
-    durationMin: Number(slot?.durationMin || 0),
-    appUrl,
-  });
-  const adminHtml = bookingAdminHtml({
-    clinicName: slot?.clinic?.name || 'Clinic',
-    providerName: slot?.provider?.name || 'Provider',
-    startsAtISO: String(slot?.startsAt),
-    durationMin: Number(slot?.durationMin || 0),
-    patientName: name,
-    patientEmail: email,
-    appUrl,
-  });
-  const admin = process.env.ADMIN_EMAIL || process.env.SMTP_USER || '';
-  try {
-    if (email) await sendEmail({ to: email, subject: 'Your CareLux booking is confirmed', html: customerHtml });
-    if (admin) await sendEmail({ to: String(admin), subject: 'New CareLux booking', html: adminHtml });
-  } catch (e) { console.warn('[booking] Email send failed', e); }
 
-  } catch {
+    const slot = await prisma.slot.findUnique({
+      where: { id: slotId },
+      include: { clinic: true, provider: true },
+    });
+
+    if (slot) {
+      const startsAt = new Date(slot.startsAt);
+      const endsAt = new Date(startsAt.getTime() + slot.durationMin * 60000);
+      const event = await createCalendarEvent({
+        title: `Appointment: ${slot.provider.name} at ${slot.clinic.name}`,
+        description: `Your confirmed booking details. Notes: ${notes || "None"}`,
+        location: `${slot.clinic.name}, ${slot.clinic.city}`,
+        start: [startsAt.getFullYear(), startsAt.getMonth() + 1, startsAt.getDate(), startsAt.getHours(), startsAt.getMinutes()],
+        end: [endsAt.getFullYear(), endsAt.getMonth() + 1, endsAt.getDate(), endsAt.getHours(), endsAt.getMinutes()],
+        status: 'CONFIRMED',
+        organizer: { name: "CareLux Health", email: process.env.SMTP_FROM || 'noreply@carelux.app' },
+        attendees: [
+          { name: name, email: email, rsvp: true, partstat: 'NEEDS-ACTION', role: 'REQ-PARTICIPANT' }
+        ]
+      });
+
+      const attachments = [{
+        filename: 'invite.ics',
+        content: event,
+        contentType: 'text/calendar; method=REQUEST',
+      }];
+
+      const appUrl = process.env.APP_BASE_URL || 'http://localhost:3000';
+      const customerHtml = bookingCustomerHtml({
+        logoCid: "logo",
+        clinicName: slot.clinic.name,
+        clinicCity: slot.clinic.city,
+        providerName: slot.provider.name,
+        startsAtISO: slot.startsAt.toISOString(),
+        durationMin: slot.durationMin,
+        appUrl,
+      });
+      const adminHtml = bookingAdminHtml({
+        logoCid: "logo",
+        clinicName: slot.clinic.name,
+        clinicCity: slot.clinic.city,
+        providerName: slot.provider.name,
+        startsAtISO: slot.startsAt.toISOString(),
+        durationMin: slot.durationMin,
+        patientName: name,
+        patientEmail: email,
+        appUrl,
+      });
+
+      const adminEmailAddr = process.env.ADMIN_EMAIL || process.env.SMTP_USER || '';
+      try {
+        if (email) await sendEmail({ to: email, subject: 'Your CareLux booking is confirmed', html: customerHtml, attachments });
+        if (adminEmailAddr) await sendEmail({ to: adminEmailAddr, subject: 'New CareLux booking', html: adminHtml });
+      } catch (e) {
+        console.warn('[booking] Email send failed', e);
+      }
+    }
+  } catch(e) {
+    console.error("Booking failed:", e);
     redirect(`/clinics?err=booked`);
   }
 
