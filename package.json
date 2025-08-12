@@ -11,6 +11,19 @@
     "prisma:migrate": "prisma migrate dev",
     "postinstall": "prisma generate || true"
   },
+  {
+  "name": "carelux-health",
+  "version": "0.2.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate dev",
+    "postinstall": "prisma generate || true"
+  },
   "dependencies": {
     "@prisma/client": "5.17.0",
     "bcryptjs": "^2.4.3",
@@ -24,7 +37,7 @@
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",
-    "@types/ics": "^... a version ...",
+    "@types/ics": "^3.0.4",
     "@types/node": "24.2.1",
     "@types/react": "19.1.9",
     "autoprefixer": "10.4.19",
