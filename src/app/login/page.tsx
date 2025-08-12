@@ -1,7 +1,11 @@
+// src/app/login/page.tsx
+
 "use client";
 import { signIn } from "next-auth/react";
 import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+
+export const dynamic = 'force-dynamic'; // <-- ADD THIS LINE
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
