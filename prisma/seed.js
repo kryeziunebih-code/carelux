@@ -1,81 +1,133 @@
 // prisma/seed.js
-require('dotenv').config();
-const { PrismaClient } = require('@prisma/client');
-const bcrypt = require('bcryptjs');
+
+const { PrismaClient } = require("@prisma/client");
+const bcrypt = require("bcryptjs");
 
 const prisma = new PrismaClient();
-const addDays = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
 
-(async () => {
-  // 1) Admin user (your schema uses passwordHash)
-  const email = process.env.ADMIN_EMAIL || 'admin@carelux.com';
-  const pass  = process.env.ADMIN_INIT_PASSWORD || 'CareluxAdmin123';
-  const hash  = bcrypt.hashSync(String(pass), 10);
+async function main() {
+  console.log("Seeding started...");
 
-  const admin = await prisma.user.findUnique({ where: { email } });
-  if (admin) {
-    await prisma.user.update({ where: { email }, data: { role: 'ADMIN', passwordHash: hash, name: 'Admin' } });
-  } else {
-    await prisma.user.create({ data: { email, role: 'ADMIN', passwordHash: hash, name: 'Admin' } });
-  }
+  // Clear existing data
+  await prisma.booking.deleteMany();
+  await prisma.slot.deleteMany();
+  await prisma.provider.deleteMany();
+  await prisma.service.deleteMany(); // Clear services
+  await prisma.clinicSpecialty.deleteMany();
+  await prisma.specialty.deleteMany();
+  await prisma.clinic.deleteMany();
+  await prisma.user.deleteMany();
 
-  // 2) Clinic (name is unique)
-  const clinic = await prisma.clinic.upsert({
-    where: { name: 'CareLux Test Clinic' },
+  // Create Admin User
+  const adminEmail = process.env.ADMIN_EMAIL || "admin@carelux.app";
+  const adminPassword = process.env.ADMIN_INIT_PASSWORD || "password";
+  const passwordHash = await bcrypt.hash(adminPassword, 10);
+  const adminUser = await prisma.user.upsert({
+    where: { email: adminEmail },
     update: {},
-    create: { name: 'CareLux Test Clinic', city: 'Luxembourg' },
+    create: {
+      email: adminEmail,
+      passwordHash,
+      role: "ADMIN",
+      name: "Admin",
+    },
+  });
+  console.log("Admin user created/updated:", adminUser.email);
+
+  // Create Clinics
+  const clinic1 = await prisma.clinic.create({
+    data: {
+      name: "Wellness Clinic",
+      city: "Zurich",
+    },
+  });
+  console.log("Created clinic:", clinic1.name);
+
+  // Create Providers
+  const provider1 = await prisma.provider.create({
+    data: {
+      name: "Dr. Smith",
+      specialty: "Cardiology",
+      clinicId: clinic1.id,
+    },
+  });
+  const provider2 = await prisma.provider.create({
+    data: {
+      name: "Dr. Jones",
+      specialty: "Dermatology",
+      clinicId: clinic1.id,
+    },
+  });
+  console.log("Created providers: Dr. Smith, Dr. Jones");
+
+  // --- NEW: Create Services for the clinic ---
+  const service1 = await prisma.service.create({
+    data: {
+      name: 'Annual Checkup',
+      description: 'A comprehensive annual health checkup.',
+      durationMin: 60,
+      price: 250.0,
+      clinicId: clinic1.id,
+    }
   });
 
-  // helper to get/create provider by (name, clinicId)
-  async function getOrCreateProvider({ name, specialty }) {
-    const existing = await prisma.provider.findFirst({
-      where: { name, clinicId: clinic.id },
-    });
-    if (existing) return existing;
-    return prisma.provider.create({ data: { name, clinicId: clinic.id, specialty } });
-  }
-
-  // 3) Providers (no email field in your schema)
-  const dr1 = await getOrCreateProvider({ name: 'Dr. Sarah Mitchell', specialty: 'Dermatology' });
-  const dr2 = await getOrCreateProvider({ name: 'Dr. James Carter',   specialty: 'Pediatrics'  });
-
-  // 4) Slots (next 7 days, 10:00 & 11:00 for each provider) — avoid duplicates by checking same timestamp
-  async function ensureSlot({ providerId, startsAt, durationMin }) {
-    const existing = await prisma.slot.findFirst({
-      where: { providerId, startsAt },
-    });
-    if (existing) return existing;
-    return prisma.slot.create({ data: { providerId, clinicId: clinic.id, startsAt, durationMin } });
-  }
-
-  const providers = [dr1, dr2];
-  const slots = [];
-  const today = new Date();
-  for (let i = 0; i < 7; i++) {
-    for (const p of providers) {
-      const base = new Date(addDays(today, i)); base.setHours(10, 0, 0, 0);
-      const s1 = await ensureSlot({ providerId: p.id, startsAt: base, durationMin: 30 });
-      const s2 = await ensureSlot({ providerId: p.id, startsAt: new Date(base.getTime() + 60 * 60 * 1000), durationMin: 30 });
-      slots.push(s1, s2);
+  const service2 = await prisma.service.create({
+    data: {
+      name: 'Follow-up Visit',
+      description: 'A standard follow-up appointment.',
+      durationMin: 30,
+      price: 120.0,
+      clinicId: clinic1.id,
     }
+  });
+  console.log("Created services:", service1.name, service2.name);
+
+
+  // --- UPDATED: Create Slots linked to services ---
+  const today = new Date();
+  const slots = [];
+  for (let i = 0; i < 5; i++) {
+    const slotDate = new Date(today);
+    slotDate.setDate(today.getDate() + i);
+    
+    // Slot for Annual Checkup with Dr. Smith
+    slotDate.setHours(9, 0, 0, 0);
+    slots.push(
+      prisma.slot.create({
+        data: {
+          startsAt: slotDate,
+          clinicId: clinic1.id,
+          providerId: provider1.id,
+          serviceId: service1.id, // Link to service 1
+        },
+      })
+    );
+    
+    // Slot for Follow-up Visit with Dr. Jones
+    slotDate.setHours(14, 0, 0, 0);
+    slots.push(
+      prisma.slot.create({
+        data: {
+          startsAt: slotDate,
+          clinicId: clinic1.id,
+          providerId: provider2.id,
+          serviceId: service2.id, // Link to service 2
+        },
+      })
+    );
   }
 
-  // 5) Bookings (mixed statuses) — only create if none exists for that slot yet
-  async function ensureBooking({ slot, patientName, patientEmail, status }) {
-    const existing = await prisma.booking.findFirst({ where: { slotId: slot.id } });
-    if (existing) return existing;
-    return prisma.booking.create({
-      data: { slotId: slot.id, patientName, patientEmail, status },
-    });
-  }
+  await Promise.all(slots);
+  console.log("Created 10 slots");
 
-  const pick = (i) => slots[i % slots.length];
-  await ensureBooking({ slot: pick(0), patientName: 'John Doe',     patientEmail: 'customer@test.com',  status: 'CONFIRMED' });
-  await ensureBooking({ slot: pick(1), patientName: 'Jane Smith',   patientEmail: 'customer2@test.com', status: 'PENDING'   });
-  await ensureBooking({ slot: pick(2), patientName: 'Chris Lee',    patientEmail: 'customer3@test.com', status: 'CANCELLED' });
-  await ensureBooking({ slot: pick(3), patientName: 'Alicia Brown', patientEmail: 'customer4@test.com', status: 'COMPLETED' });
+  console.log("Seeding finished.");
+}
 
-  console.log('✅ Seed complete: admin, clinic, providers, slots, bookings.');
-})()
-.catch((e) => { console.error('❌ Seed failed:', e); process.exit(1); })
-.finally(async () => { await prisma.$disconnect(); });
+main()
+  .catch((e) => {
+    console.error(e);
+    process.exit(1);
+  })
+  .finally(async () => {
+    await prisma.$disconnect();
+  });
