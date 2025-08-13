@@ -1,3 +1,5 @@
+// src/app/providers/[id]/page.tsx
+
 import { prisma } from "../../../lib/prisma";
 import { notFound } from "next/navigation";
 import { revalidatePath } from "next/cache";
@@ -8,8 +10,9 @@ import BookingForm from "../../../components/BookingForm";
 import Breadcrumbs from "../../../components/Breadcrumbs";
 import BackButton from "../../../components/BackButton";
 import Link from "next/link";
-import { createCalendarEvent } from "../../../lib/calendar"; // Make sure this import is at the top
+import { createCalendarEvent } from "../../../lib/calendar";
 
+// UPDATED: The bookSlot server action
 async function bookSlot(formData: FormData) {
   "use server";
   const slotId = String(formData.get("slotId") || "");
@@ -25,17 +28,19 @@ async function bookSlot(formData: FormData) {
     });
     await prisma.slot.update({ where: { id: slotId }, data: { booked: true } });
 
+    // UPDATED: Fetch service along with slot
     const slot = await prisma.slot.findUnique({
       where: { id: slotId },
-      include: { clinic: true, provider: true },
+      include: { clinic: true, provider: true, service: true },
     });
 
-    if (slot) {
+    if (slot && slot.service) {
       const startsAt = new Date(slot.startsAt);
-      const endsAt = new Date(startsAt.getTime() + slot.durationMin * 60000);
+      // UPDATED: Use duration from service
+      const endsAt = new Date(startsAt.getTime() + slot.service.durationMin * 60000);
       const event = await createCalendarEvent({
-        title: `Appointment: ${slot.provider.name} at ${slot.clinic.name}`,
-        description: `Your confirmed booking details. Notes: ${notes || "None"}`,
+        title: `Appointment: ${slot.service.name} with ${slot.provider.name}`,
+        description: `Your confirmed booking for ${slot.service.name}. Notes: ${notes || "None"}`,
         location: `${slot.clinic.name}, ${slot.clinic.city}`,
         start: [startsAt.getFullYear(), startsAt.getMonth() + 1, startsAt.getDate(), startsAt.getHours(), startsAt.getMinutes()],
         end: [endsAt.getFullYear(), endsAt.getMonth() + 1, endsAt.getDate(), endsAt.getHours(), endsAt.getMinutes()],
@@ -59,7 +64,7 @@ async function bookSlot(formData: FormData) {
         clinicCity: slot.clinic.city,
         providerName: slot.provider.name,
         startsAtISO: slot.startsAt.toISOString(),
-        durationMin: slot.durationMin,
+        durationMin: slot.service.durationMin, // UPDATED
         appUrl,
       });
       const adminHtml = bookingAdminHtml({
@@ -68,7 +73,7 @@ async function bookSlot(formData: FormData) {
         clinicCity: slot.clinic.city,
         providerName: slot.provider.name,
         startsAtISO: slot.startsAt.toISOString(),
-        durationMin: slot.durationMin,
+        durationMin: slot.service.durationMin, // UPDATED
         patientName: name,
         patientEmail: email,
         appUrl,
@@ -89,12 +94,15 @@ async function bookSlot(formData: FormData) {
 
   revalidatePath(`/providers`);
 }
+
+// UPDATED: The main page component
 export default async function ProviderDetail({ params }: { params: { id: string } }) {
   const provider = await prisma.provider.findUnique({
     where: { id: params.id },
     include: {
       clinic: true,
-      slots: { include: { clinic: true }, orderBy: { startsAt: "asc" } },
+      // UPDATED: Include service when fetching slots
+      slots: { include: { clinic: true, service: true }, orderBy: { startsAt: "asc" } },
     },
   });
   if (!provider) return notFound();
@@ -120,9 +128,10 @@ export default async function ProviderDetail({ params }: { params: { id: string 
           <div className="card" key={s.id}>
             <div className="flex items-start justify-between gap-4">
               <div>
-                <div className="font-medium">{s.clinic?.name}</div>
+                {/* UPDATED: Display service name and duration */}
+                <div className="font-medium">{s.service?.name} at {s.clinic?.name}</div>
                 <div className="text-gray-600">
-                  {new Date(s.startsAt).toLocaleString()} ({Math.round(s.durationMin)} min)
+                  {new Date(s.startsAt).toLocaleString()} ({s.service?.durationMin} min)
                 </div>
                 <div className="mt-1">
                   <span className="badge">{s.booked ? "Booked" : "Available"}</span>
