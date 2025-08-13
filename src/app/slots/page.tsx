@@ -1,16 +1,26 @@
-// src/app/providers/[id]/page.tsx
+// src/app/slots/page.tsx
 
-import { prisma } from "../../../lib/prisma";
-import { notFound } from "next/navigation";
+import { prisma } from "../../lib/prisma";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { sendEmail } from "../../../lib/mailer";
-import { bookingCustomerHtml, bookingAdminHtml } from "../../../lib/emailTemplates";
-import BookingForm from "../../../components/BookingForm";
-import Breadcrumbs from "../../../components/Breadcrumbs";
-import BackButton from "../../../components/BackButton";
-import Link from "next/link";
-import { createCalendarEvent } from "../../../lib/calendar";
+import Toast from "../../components/Toast";
+import { sendEmail } from "../../lib/mailer";
+import { bookingCustomerHtml, bookingAdminHtml } from "../../lib/emailTemplates";
+import BookingForm from "../../components/BookingForm";
+import Pagination from "../../components/Pagination";
+import { createCalendarEvent } from "../../lib/calendar";
+
+type Params = {
+  searchParams?: {
+    date?: string;
+    available?: string;
+    q?: string;
+    page?: string;
+    perPage?: string;
+    ok?: string;
+    err?: string;
+  };
+};
 
 // UPDATED: The bookSlot server action
 async function bookSlot(formData: FormData) {
@@ -20,7 +30,9 @@ async function bookSlot(formData: FormData) {
   const email = String(formData.get("email") || "");
   const notes = String(formData.get("notes") || "");
 
-  if (!slotId || !name || !email) redirect(`/providers?err=missing`);
+  if (!slotId || !name || !email) {
+    redirect("/slots?err=missing");
+  }
 
   try {
     await prisma.booking.create({
@@ -89,47 +101,105 @@ async function bookSlot(formData: FormData) {
     }
   } catch(e) {
     console.error("Booking failed:", e);
-    redirect(`/providers?err=booked`);
+    redirect("/slots?err=booked");
   }
 
-  revalidatePath(`/providers`);
+  revalidatePath("/slots");
+  redirect("/slots?ok=1");
 }
 
 // UPDATED: The main page component
-export default async function ProviderDetail({ params }: { params: { id: string } }) {
-  const provider = await prisma.provider.findUnique({
-    where: { id: params.id },
-    include: {
-      clinic: true,
-      // UPDATED: Include service when fetching slots
-      slots: { include: { clinic: true, service: true }, orderBy: { startsAt: "asc" } },
-    },
+export default async function SlotsPage({ searchParams }: Params) {
+  const q = (searchParams?.q || "").trim();
+  const date = (searchParams?.date || "").trim(); // YYYY-MM-DD
+  const availableOnly = searchParams?.available === "1";
+  const page = Math.max(1, parseInt(searchParams?.page || "1", 10) || 1);
+  const perPage = Math.max(1, parseInt(searchParams?.perPage || "12", 10) || 12);
+
+  const where: any = {};
+  if (availableOnly) where.booked = false;
+
+  if (date) {
+    const start = new Date(date + "T00:00:00");
+    const end = new Date(start.getTime() + 24 * 3600 * 1000);
+    where.startsAt = { gte: start, lt: end };
+  }
+
+  if (q) {
+    const [providers, clinics, services] = await Promise.all([
+      prisma.provider.findMany({ where: { name: { contains: q } }, select: { id: true } }),
+      prisma.clinic.findMany({ where: { OR: [{ name: { contains: q } }, { city: { contains: q } }] }, select: { id: true } }),
+      prisma.service.findMany({ where: { name: { contains: q } }, select: { id: true } })
+    ]);
+    const providerIds = providers.map(p => p.id);
+    const clinicIds = clinics.map(c => c.id);
+    const serviceIds = services.map(s => s.id);
+    where.OR = [
+      { providerId: { in: providerIds } },
+      { clinicId: { in: clinicIds } },
+      { serviceId: { in: serviceIds } },
+    ];
+  }
+
+  const total = await prisma.slot.count({ where });
+
+  const slots = await prisma.slot.findMany({
+    where,
+    // UPDATED: Include service when fetching slots
+    include: { provider: true, clinic: true, service: true },
+    orderBy: { startsAt: "asc" },
+    skip: (page - 1) * perPage,
+    take: perPage,
   });
-  if (!provider) return notFound();
 
   return (
     <div className="grid gap-4">
-      <Breadcrumbs items={[{ label: "Providers", href: "/providers" }, { label: provider.name }]} />
-      <div className="flex items-center justify-between">
-        <BackButton />
-      </div>
-      <div className="card">
-        <h1 className="text-2xl font-semibold">{provider.name}</h1>
-        <p className="text-gray-600">{provider.specialty}</p>
-        {provider.clinic && (
-          <p className="text-gray-600">Clinic: <Link href={`/clinics/${provider.clinic.id}`} className="link">{provider.clinic.name}</Link></p>
-        )}
-      </div>
+      <h1 className="text-2xl font-semibold">Slots</h1>
 
+      <Toast
+        message={
+          searchParams?.ok ? "Booking confirmed." :
+          searchParams?.err === "booked" ? "That slot is already booked." :
+          searchParams?.err === "missing" ? "Please fill name and email." : undefined
+        }
+        variant={searchParams?.err ? "err" : "ok"}
+      />
+
+      <form className="card grid md:grid-cols-4 gap-3" method="get">
+        <div className="grid gap-1">
+          <label>Search</label>
+          {/* UPDATED: Placeholder text */}
+          <input name="q" defaultValue={q} placeholder="Service, clinic or provider" />
+        </div>
+        <div className="grid gap-1">
+          <label>Date</label>
+          <input type="date" name="date" defaultValue={date} />
+        </div>
+        <div className="grid gap-1">
+          <label>Availability</label>
+          <label className="inline-flex items-center gap-2">
+            <input type="checkbox" name="available" value="1" defaultChecked={availableOnly} />
+            Available only
+          </label>
+        </div>
+        <div className="flex items-end gap-2">
+          <button className="btn" type="submit">Filter</button>
+          <a className="badge" href="/slots">Clear filters</a>
+        </div>
+        <input type="hidden" name="perPage" value={perPage} />
+      </form>
+
+      {slots.length === 0 && <p className="text-gray-500">No slots match your filters.</p>}
       <div className="grid gap-3">
-        <h2 className="text-xl font-semibold">Slots</h2>
-        {provider.slots.length === 0 && <p className="text-gray-500">No slots yet.</p>}
-        {provider.slots.map(s => (
+        {slots.map((s) => (
           <div className="card" key={s.id}>
             <div className="flex items-start justify-between gap-4">
               <div>
                 {/* UPDATED: Display service name and duration */}
-                <div className="font-medium">{s.service?.name} at {s.clinic?.name}</div>
+                <div className="font-medium">{s.service?.name} with {s.provider?.name}</div>
+                <div className="text-gray-600">
+                  {s.clinic?.name}
+                </div>
                 <div className="text-gray-600">
                   {new Date(s.startsAt).toLocaleString()} ({s.service?.durationMin} min)
                 </div>
@@ -137,11 +207,15 @@ export default async function ProviderDetail({ params }: { params: { id: string 
                   <span className="badge">{s.booked ? "Booked" : "Available"}</span>
                 </div>
               </div>
-              {!s.booked && <BookingForm slotId={s.id} action={bookSlot} />}
+              {!s.booked && (
+                <BookingForm slotId={s.id} action={bookSlot} />
+              )}
             </div>
           </div>
         ))}
       </div>
+
+      <Pagination page={page} perPage={perPage} total={total} params={{ q, date, available: availableOnly ? "1" : "" }} />
     </div>
   );
 }
