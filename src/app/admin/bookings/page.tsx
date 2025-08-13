@@ -37,7 +37,7 @@ export default async function AdminBookings({ searchParams }: { searchParams: Se
   const bookings = await prisma.booking.findMany({
     where,
     orderBy: { createdAt: "desc" },
-    include: { slot: { include: { clinic: true, provider: true } } },
+    include: { slot: { include: { clinic: true, provider: true, service: true } } },
     take: 50, // limit for now
   });
 
@@ -90,7 +90,7 @@ export default async function AdminBookings({ searchParams }: { searchParams: Se
                   <td className="py-2 pr-3">
                     {when.toLocaleDateString()}{" "}
                     {when.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                    <div className="text-gray-500 text-xs">{s.durationMin} min</div>
+                    <div className="text-gray-500 text-xs">{s.service?.durationMin} min</div>
                   </td>
                   <td className="py-2 pr-3">{s.clinic?.name} ({s.clinic?.city})</td>
                   <td className="py-2 pr-3">{s.provider?.name}</td>
